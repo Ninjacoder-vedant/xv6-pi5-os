@@ -1,8 +1,95 @@
-// Shell.
-
+// autocomplete functionality
 #include "types.h"
+#include "stat.h"
 #include "user.h"
+#include "fs.h"
 #include "fcntl.h"
+
+#define MAX_CMDS 32
+
+// simple prefix match
+int
+startsWith(const char *s, const char *prefix)
+{
+  while(*prefix){
+    if(*s == 0 || *s != *prefix)
+      return 0;
+    s++;
+    prefix++;
+  }
+  return 1;
+}
+
+int
+auto_complete(char *buff, int *index)
+{
+  int fd;
+  struct stat st;
+  struct dirent de;
+
+  int num_commands = 0;
+  char commands[MAX_CMDS][DIRSIZ+1];
+
+  // open /bin (where commands live in xv6)
+  fd = open("/", 0);
+  if(fd < 0){
+    printf(2, "autocomplete: cannot open /bin\n");
+    return 0;
+  }
+
+  if(fstat(fd, &st) < 0 || st.type != T_DIR){
+    printf(2, "autocomplete: not a directory\n");
+    close(fd);
+    return 0;
+  }
+
+  // read directory entries
+  while(read(fd, &de, sizeof(de)) == sizeof(de)){
+    if(de.inum == 0) continue;
+    if(num_commands < MAX_CMDS){
+      int len = DIRSIZ;
+      while(len > 0 && (de.name[len-1] == ' ' || de.name[len-1] == '\0'))
+        len--;
+
+      memmove(commands[num_commands], de.name, len);
+      commands[num_commands][len] = '\0';
+      num_commands++;
+    }
+  }
+  close(fd);
+
+  // find matches
+  int matches = 0, last = -1;
+  for(int i = 0; i < num_commands; i++){
+    if(startsWith(commands[i], buff)){
+      matches++;
+      last = i;
+    }
+  }
+
+  if(matches == 0){
+    // no matches
+    return 0;
+  } else if(matches == 1){
+    // complete the unique match
+    strcpy(buff, commands[last]);
+    *index = strlen(buff);
+    printf(1, "\r$ %s", buff);  // redraw line with completed command
+  } else {
+    // multiple matches
+    printf(1, "\n");
+    for(int i = 0; i < num_commands; i++){
+      if(startsWith(commands[i], buff))
+        printf(1, "%s\n", commands[i]);
+    }
+    // reprint prompt and buffer
+    printf(1, "$ %s", buff);
+  }
+
+  return matches;
+}
+
+// Shell.
 
 // Parsed command representation
 #define EXEC  1
@@ -131,12 +218,50 @@ runcmd(struct cmd *cmd)
     exit();
 }
 
+// Read a line char-by-char so we can intercept the Tab key.
+// Mirrors gets(), but on '\t' it calls auto_complete() to expand the buffer.
+int
+readline(char *buf, int nbuf)
+{
+    int i = 0;
+    char c;
+
+    while(i < nbuf-1){
+        // read one byte from stdin; <=0 means EOF
+        if(read(0, &c, 1) <= 0)
+            break;
+
+        if(c == '\t'){
+            buf[i] = '\0';
+            auto_complete(buf, &i);   // expands buf and updates i (index) in place
+            continue;
+        }
+
+        if(c == '\n' || c == '\r'){
+            buf[i++] = '\n';          // keep newline so parser/chdir logic works
+            break;
+        }
+
+        if(c == 127 || c == '\b'){    // backspace: erase last char on screen
+            if(i > 0){
+                i--;
+                printf(2, "\b \b");
+            }
+            continue;
+        }
+
+        buf[i++] = c;                 // ordinary character
+    }
+    buf[i] = '\0';
+    return i;
+}
+
 int
 getcmd(char *buf, int nbuf)
 {
     printf(2, "$ ");
     memset(buf, 0, nbuf);
-    gets(buf, nbuf);
+    readline(buf, nbuf);              // was gets(); now supports Tab completion
     if(buf[0] == 0) // EOF
         return -1;
     return 0;

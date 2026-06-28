@@ -195,6 +195,15 @@ void consoleintr (int (*getc) (void))
 
             break;
 
+        case '\t':  // Tab: flush partial line now so the shell can autocomplete
+            if (input.e - input.r < INPUT_BUF) {
+                input.buf[input.e++ % INPUT_BUF] = '\t';
+                input.w = input.e;        // deliver without waiting for '\n'
+                wakeup(&input.r);
+            }
+
+            break;
+
         default:
             if ((c != 0) && (input.e - input.r < INPUT_BUF)) {
                 c = (c == '\r') ? '\n' : c;
