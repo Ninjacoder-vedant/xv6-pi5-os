@@ -114,6 +114,7 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_ps(void);
 
 static int (*syscalls[])(void) = {
         [SYS_fork]    sys_fork,
@@ -137,6 +138,7 @@ static int (*syscalls[])(void) = {
         [SYS_link]    sys_link,
         [SYS_mkdir]   sys_mkdir,
         [SYS_close]   sys_close,
+        [SYS_ps]      sys_ps,
 };
 
 void syscall(void)
@@ -150,6 +152,8 @@ void syscall(void)
 
     if((num > 0) && (num <= NELEM(syscalls)) && syscalls[num]) {
         ret = syscalls[num]();
+
+        proc->syscount++; // Increment the system call count for the current process
 
         // in ARM, parameters to main (argc, argv) are passed in r0 and r1
         // do not set the return value if it is SYS_exec (the user program

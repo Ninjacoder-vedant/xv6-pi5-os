@@ -66,6 +66,7 @@ static struct proc* allocproc(void)
     return 0;
 
     found:
+    p->syscount = 0; // Initialize syscount to 0 for the new process
     p->state = EMBRYO;
     p->pid = nextpid++;
     release(&ptable.lock);
@@ -529,4 +530,43 @@ void procdump(void)
     show_callstk("procdump: \n");
 }
 
+// Print all the processes aside from unused ones: pid, state, and name
+void ps(void)
+{
+    static char *states[] = {
+        [UNUSED] "unused",
+        [EMBRYO] "embryo",
+        [SLEEPING] "sleep",
+        [RUNNABLE] "runble",
+        [RUNNING] "run",
+        [ZOMBIE] "zombie"};
 
+    struct proc *p;
+    char *state;
+
+    acquire(&ptable.lock);
+
+    cprintf("PID\tPARENT PID\tSTATE\t\tNAME\tSYSCALLS\n");
+
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+        if (p->state == UNUSED)
+        {
+            continue;
+        }
+
+        if (p->state >= 0 && p->state < NELEM(states) && states[p->state])
+        {
+            state = states[p->state];
+        }
+        else
+        {
+            state = "???";
+        }
+
+        int ppid = (p->parent) ? p->parent->pid : -1;
+        cprintf("%d\t%d\t\t%s\t\t%s\t%d\n", p->pid, ppid, state, p->name, p->syscount);
+    }
+
+    release(&ptable.lock);
+}

@@ -94,3 +94,9 @@ int sys_uptime(void)
 
     return xticks;
 }
+
+// New system call to print all process information
+int sys_ps(void){
+    ps();
+    return 0;
+}
